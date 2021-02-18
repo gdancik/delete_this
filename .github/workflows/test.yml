@@ -12,15 +12,44 @@ jobs:
         env:
           MYSQL_ROOT_PASSWORD: password
         ports:
-        - 32574:3306
+            - 3000:3306
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
 
     steps:
       - uses: actions/checkout@v2
 
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v1
+
+      - name: install libcurl
+        run: sudo apt-get install libcurl4-openssl-dev
+
+      - name: Install remotes
+        run: |
+            install.packages('remotes')
+        shell: Rscript {0}
+
+      - name: Cache R packages
+        id: cache-packages
+        uses: actions/cache@v2
+        with:
+            path: ${{ env.R_LIBS_USER }}
+            key: ${{ runner.os }}-${{ hashFiles('.github/R-version') }}-RMariaDB-1
+
+      - name: Query dependencies
+        run: |
+            remotes::install_cran('RMariaDB')
+        shell: Rscript {0}
+
       - name: Verify MySQL connection from host
         run: |
-          sudo apt-get install -y mysql-client
-          mysql --host 127.0.0.1 --port 32574 -uroot -ppassword -e "SHOW DATABASES"
+          mysql --host 0.0.0.0 --port 3000 -uroot -ppassword -e "SHOW DATABASES"
 
+      - name: Verify MySQL connection from config file
+        run: mysql --defaults-extra-file=.my.cnf --defaults-group-suffix=dbemployees -e "SHOW DATABASES"
 
+      - name: Move config file
+        run: sudo mv .my.cnf ~/.my.cnf 
+
+      - name: Verify R/MySQL connection
+        run: Rscript test.R
